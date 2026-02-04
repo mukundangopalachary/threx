@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LocationMap } from '@/components/location-map';
-import { Search, MapPin, Download, Loader2, Users } from 'lucide-react';
+import { Search, MapPin, Download, Loader2, Users, IndianRupee, Briefcase } from 'lucide-react';
 import gsap from 'gsap';
 import jsPDF from 'jspdf';
 
@@ -85,9 +85,10 @@ const [location, setLocation] = useState('');
   const [selectedCategory, setSelectedCategory] = useState({ type: '', value: '' });
   const [currentDistrict, setCurrentDistrict] = useState(tamilNaduDistricts['chennai']);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  
+  const [labourData, setLabourData] = useState<any[] | null>(null);
   const [mapData, setMapData] = useState<{ shops: any; blindspots: any } | null>(null);
   const [populationData, setPopulationData] = useState<any[] | null>(null); // NEW: Population State
+  const [avgRent, setAvgRent] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   
   const infoRef = useRef<HTMLDivElement>(null);
@@ -132,6 +133,18 @@ const handleSearchKey = (key: string) => {
       const popRes = await fetch(popUrl);
       const popData = await popRes.json();
       setPopulationData(popData);
+
+      // 3. NEW: Fetch Average Rent Data
+      const rentUrl = `http://127.0.0.1:8000/api/v1/avgrent/${currentDistrict.name.toLowerCase()}`;
+      const rentRes = await fetch(rentUrl);
+      const rentData = await rentRes.json();
+      setAvgRent(rentData); // This saves the number (e.g., 206416.67)
+
+      // 4. NEW: Fetch Labour Data using District Code
+      const labourUrl = `http://127.0.0.1:8000/api/v1/labour/${currentDistrict.code}`;
+      const labourRes = await fetch(labourUrl);
+      const lbData = await labourRes.json();
+      setLabourData(lbData);
 
       // Animation for the info panel
       if (infoRef.current) {
@@ -201,7 +214,7 @@ const handleSearchKey = (key: string) => {
     }
   };
 
- return (
+return (
   <div className="w-full h-screen bg-background flex flex-col">
     {/* Header */}
     <div className="fixed top-0 left-0 right-0 bg-white border-b border-border z-50 px-4 h-16">
@@ -289,13 +302,13 @@ const handleSearchKey = (key: string) => {
 
       {/* Main View Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Map Area - Grows to fill space */}
+        {/* Map Area */}
         <div className="flex-1 relative border-b border-border">
           <LocationMap data={mapData || { shops: {}, blindspots: {} }} />
         </div>
 
-        {/* Insight Panel - Fixed Height with Internal Scroll */}
-        {(mapData || populationData) && (
+        {/* Insight Panel */}
+        {(mapData || populationData || avgRent) && (
           <div 
             ref={infoRef} 
             className="h-1/3 min-h-[250px] bg-white flex flex-col shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-10"
@@ -306,31 +319,46 @@ const handleSearchKey = (key: string) => {
                 <h3 className="text-lg font-bold text-foreground">{currentDistrict.name} Market Insight</h3>
                 <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Live Analysis</span>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => {setMapData(null); setPopulationData(null)}}>Clear Data</Button>
+              <Button variant="ghost" size="sm" onClick={() => {setMapData(null); setPopulationData(null); setAvgRent?.(null);}}>Clear Data</Button>
             </div>
 
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
               
               {/* Top Row: Business Metrics */}
-              {mapData && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Existing Competition</p>
-                    <p className="text-2xl font-bold text-foreground">{Object.keys(mapData.shops).length} <span className="text-sm font-normal text-muted-foreground">Outlets</span></p>
-                  </div>
-                  <div className="p-4 bg-green-50/50 rounded-xl border border-green-100">
-                    <p className="text-xs font-semibold text-green-700 uppercase mb-1">Expansion Gaps</p>
-                    <p className="text-2xl font-bold text-green-600">{Object.keys(mapData.blindspots).length} <span className="text-sm font-normal">Blindspots</span></p>
-                  </div>
-                  <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
-                    <p className="text-xs font-semibold text-primary uppercase mb-1">Market Saturation</p>
-                    <p className="text-xl font-bold text-primary">Moderate</p>
-                  </div>
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {mapData && (
+                  <>
+                    <div className="p-4 bg-muted/30 rounded-xl border border-border">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Competition</p>
+                      <p className="text-2xl font-bold text-foreground">{Object.keys(mapData.shops).length} <span className="text-sm font-normal text-muted-foreground">Outlets</span></p>
+                    </div>
+                    <div className="p-4 bg-green-50/50 rounded-xl border border-green-100">
+                      <p className="text-xs font-semibold text-green-700 uppercase mb-1">Expansion Gaps</p>
+                      <p className="text-2xl font-bold text-green-600">{Object.keys(mapData.blindspots).length} <span className="text-sm font-normal">Blindspots</span></p>
+                    </div>
+                  </>
+                )}
 
-              {/* Bottom Row: Population Data Table */}
+                {/* --- RENT DATA CARD --- */}
+                {avgRent && (
+                  <div className="p-4 bg-orange-50/50 rounded-xl border border-orange-100">
+                    <p className="text-xs font-semibold text-orange-700 uppercase mb-1">Avg. Monthly Rent</p>
+                    <p className="text-2xl font-bold text-orange-600 flex items-baseline">
+                      <span className="text-lg mr-0.5">₹</span>
+                      {Number(avgRent).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      <span className="text-xs font-normal text-orange-400 ml-1">/sq.ft avg</span>
+                    </p>
+                  </div>
+                )}
+
+                <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                  <p className="text-xs font-semibold text-primary uppercase mb-1">Market Saturation</p>
+                  <p className="text-xl font-bold text-primary">Moderate</p>
+                </div>
+              </div>
+
+              {/* Population Data Table */}
               {populationData && (
                 <div className="space-y-4">
                   <h4 className="text-sm font-bold flex items-center gap-2">
@@ -362,6 +390,56 @@ const handleSearchKey = (key: string) => {
                   </div>
                 </div>
               )}
+
+              {/* --- NEW: LABOUR & WORKFORCE ANALYSIS SECTION --- */}
+  {labourData && labourData.length > 0 && (
+    <div className="space-y-4 pb-8">
+      <h4 className="text-sm font-bold flex items-center gap-2">
+        <Briefcase className="w-4 h-4 text-muted-foreground" /> Workforce Distribution
+      </h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Workforce Overview Cards */}
+        <div className="space-y-3">
+          <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
+            <p className="text-[10px] uppercase font-bold text-blue-600 mb-1">Total Main Workers</p>
+            <p className="text-xl font-bold">{labourData[0]?.["Main workers"]?.toLocaleString()}</p>
+          </div>
+          <div className="p-3 bg-purple-50/50 border border-purple-100 rounded-lg">
+            <p className="text-[10px] uppercase font-bold text-purple-600 mb-1">Retail & Wholesale Sector</p>
+            <p className="text-xl font-bold">{labourData[0]?.["Wholesale and retail"]?.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Detailed Industry Table */}
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-muted/50 border-b border-border uppercase text-muted-foreground">
+              <tr>
+                <th className="p-2 font-bold">Industry Sector</th>
+                <th className="p-2 font-bold text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-white">
+              {[
+                { label: "Manufacturing", key: "Manufacturing" },
+                { label: "Construction", key: "construction" },
+                { label: "Accommodation & Food", key: "Accomodation and food" },
+                { label: "Finance & Technical", key: "Finance, Real Estate, and Technical" },
+                { label: "Education & Social", key: "Education and social services" }
+              ].map((item, idx) => (
+                <tr key={idx} className="hover:bg-muted/20">
+                  <td className="p-2 text-muted-foreground">{item.label}</td>
+                  <td className="p-2 text-right font-medium">
+                    {labourData[0]?.[item.key]?.toLocaleString() || "N/A"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )}
             </div>
           </div>
         )}
